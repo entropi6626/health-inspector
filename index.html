@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Realtime Health & Classification Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: sans-serif; text-align: center; padding: 1rem; }
+    h1, h2 { margin: 0.5rem 0; }
+    .data { font-size: 1.2rem; margin: 0.25rem; }
+    canvas { max-width: 90%; margin: 1rem auto; display: block; }
+    .flags { display: flex; justify-content: center; gap: 1rem; margin: 0.5rem 0;}
+    .flag { padding: 0.5rem 1rem; border: 1px solid #666; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Health Monitor Dashboard</h1>
+
+  <div class="data">Heart Rate: <span id="hr">–</span> BPM</div>
+  <canvas id="hrChart" height="120"></canvas>
+
+  <div class="data">SpO₂: <span id="spo2">–</span> %</div>
+  <canvas id="spo2Chart" height="120"></canvas>
+
+  <div class="data">Current Label: <strong id="label">–</strong></div>
+
+  <div class="flags">
+    <div class="flag">Fatal: <span id="fatal">–</span></div>
+    <div class="flag">Hazardous: <span id="hazard">–</span></div>
+    <div class="flag">Call Placed: <span id="call">–</span></div>
+  </div>
+
+  <h2>30 s Rolling Averages (per Label)</h2>
+  <canvas id="avgLabelChart" height="200"></canvas>
+
+  <h2>Latest Averages Bar Chart</h2>
+  <canvas id="barLabelChart" height="200"></canvas>
+
+  <script>
+    const FB_URL = 'https://espserver-db31d-default-rtdb.firebaseio.com/realtime.json';
+    const MAX_POINTS = 30;
+
+    // time axis
+    const times = [];
+
+    // HR & SpO₂ data
+    const hrData   = [];
+    const spo2Data = [];
+
+    // charts
+    let avgLabelChart, barLabelChart;
+    let avgDatasets = [], barLabels = [], barData = [];
+
+    // create HR & SpO₂ charts
+    const hrChart = new Chart(document.getElementById('hrChart'), {
+      type: 'line',
+      data: { labels: times, datasets: [{ label: 'HR (BPM)', data: hrData, fill: true }] },
+      options: { responsive: true, scales: { y: { beginAtZero: true } } }
+    });
+    const spo2Chart = new Chart(document.getElementById('spo2Chart'), {
+      type: 'line',
+      data: { labels: times, datasets: [{ label: 'SpO₂ (%)', data: spo2Data, fill: true }] },
+      options: { responsive: true, scales: { y: { beginAtZero: true } } }
+    });
+
+    function initLabelCharts(labelKeys) {
+      // multi‑line for rolling averages
+      avgDatasets = labelKeys.map(key => ({
+        label: key,
+        data: [],
+        fill: false,
+      }));
+      avgLabelChart = new Chart(document.getElementById('avgLabelChart'), {
+        type: 'line',
+        data: { labels: times, datasets: avgDatasets },
+        options: {
+          responsive: true,
+          scales: { y: { min: 0, max: 1 } }
+        }
+      });
+
+      // bar chart for latest
+      barLabels = labelKeys;
+      barData   = new Array(labelKeys.length).fill(0);
+      barLabelChart = new Chart(document.getElementById('barLabelChart'), {
+        type: 'bar',
+        data: {
+          labels: barLabels,
+          datasets: [{ label: '30s Avg Probability', data: barData }]
+        },
+        options: {
+          responsive: true,
+          scales: { y: { min: 0, max: 1 } }
+        }
+      });
+    }
+
+    async function fetchAndRender() {
+      try {
+        const res = await fetch(FB_URL);
+        const d   = await res.json();
+        const now = new Date().toLocaleTimeString();
+
+        // update text
+        document.getElementById('hr').innerText    = d.hr.toFixed(0);
+        document.getElementById('spo2').innerText  = d.spo2.toFixed(1);
+        document.getElementById('label').innerText = d.label;
+        document.getElementById('fatal').innerText = d.fatalCondition;
+        document.getElementById('hazard').innerText= d.hazardousCondition;
+        document.getElementById('call').innerText  = d.callPlaced;
+
+        // init label charts once
+        if (!avgLabelChart) {
+          initLabelCharts(Object.keys(d.avgLabels));
+        }
+
+        // shift old points
+        if (times.length > MAX_POINTS) {
+          times.shift();
+          hrData.shift();
+          spo2Data.shift();
+          avgDatasets.forEach(ds => ds.data.shift());
+        }
+
+        // push new
+        times.push(now);
+        hrData.push(d.hr);
+        spo2Data.push(d.spo2);
+        avgDatasets.forEach((ds, i) => {
+          const v = d.avgLabels[ds.label] || 0;
+          ds.data.push(v);
+          barData[i] = v;
+        });
+
+        // update charts
+        hrChart.update();
+        spo2Chart.update();
+        avgLabelChart.update();
+        barLabelChart.data.datasets[0].data = barData;
+        barLabelChart.update();
+
+      } catch (err) {
+        console.error('Fetch error:', err);
+      }
+
+      setTimeout(fetchAndRender, 4000);
+    }
+
+    window.onload = fetchAndRender;
+  </script>
+</body>
+</html>
