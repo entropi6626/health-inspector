@@ -11,6 +11,7 @@
     canvas { max-width: 90%; margin: 1rem auto; display: block; }
     .flags { display: flex; justify-content: center; gap: 1rem; margin: 0.5rem 0;}
     .flag { padding: 0.5rem 1rem; border: 1px solid #666; border-radius: 4px; }
+    .finger-off { color: red; font-weight: bold; }
   </style>
 </head>
 <body>
@@ -29,6 +30,8 @@
     <div class="flag">Hazardous: <span id="hazard">–</span></div>
     <div class="flag">Call Placed: <span id="call">–</span></div>
   </div>
+
+  <div class="data finger-off" id="fingerStatus" style="display: none;">Finger Not Detected</div>
 
   <h2>30 s Rolling Averages (per Label)</h2>
   <canvas id="avgLabelChart" height="200"></canvas>
@@ -100,6 +103,42 @@
         const res = await fetch(FB_URL);
         const d   = await res.json();
         const now = new Date().toLocaleTimeString();
+
+        // Check if finger is detected
+        if (!d.finger) {
+          document.getElementById('fingerStatus').style.display = 'block';
+          document.getElementById('hr').innerText = '–';
+          document.getElementById('spo2').innerText = '–';
+          document.getElementById('label').innerText = '–';
+          document.getElementById('fatal').innerText = '–';
+          document.getElementById('hazard').innerText = '–';
+          document.getElementById('call').innerText = '–';
+
+          // Clear data arrays
+          times.length = 0;
+          hrData.length = 0;
+          spo2Data.length = 0;
+          if (avgDatasets.length > 0) {
+            avgDatasets.forEach(ds => ds.data.length = 0);
+          }
+          if (barData.length > 0) {
+            barData.fill(0);
+          }
+
+          // Update charts
+          hrChart.update();
+          spo2Chart.update();
+          if (avgLabelChart) avgLabelChart.update();
+          if (barLabelChart) {
+            barLabelChart.data.datasets[0].data = barData;
+            barLabelChart.update();
+          }
+
+          setTimeout(fetchAndRender, 4000);
+          return;
+        } else {
+          document.getElementById('fingerStatus').style.display = 'none';
+        }
 
         // update text
         document.getElementById('hr').innerText    = d.hr.toFixed(0);
