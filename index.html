@@ -5,48 +5,22 @@
   <title>Realtime Health & Classification Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body {
-      font-family: sans-serif;
-      margin: 0;
-      padding: 0;
-      text-align: center;
-    }
-    h1, h2 {
-      margin: 1rem 0 0.5rem;
-    }
-    .data {
-      font-size: 1.4rem;
-      margin: 0.5rem;
-    }
-    canvas {
-      width: 95vw !important;
-      max-width: 100%;
-      margin: 1rem auto;
-      display: block;
-    }
-    .flags {
-      display: flex;
-      justify-content: center;
-      flex-wrap: wrap;
-      gap: 1rem;
-      margin: 1rem 0;
-    }
-    .flag {
-      padding: 0.5rem 1rem;
-      border: 1px solid #666;
-      border-radius: 4px;
-      font-size: 1.1rem;
-    }
+    body { font-family: sans-serif; text-align: center; padding: 1rem; }
+    h1, h2 { margin: 0.5rem 0; }
+    .data { font-size: 1.2rem; margin: 0.25rem; }
+    canvas { max-width: 90%; margin: 1rem auto; display: block; }
+    .flags { display: flex; justify-content: center; gap: 1rem; margin: 0.5rem 0;}
+    .flag { padding: 0.5rem 1rem; border: 1px solid #666; border-radius: 4px; }
   </style>
 </head>
 <body>
   <h1>Health Monitor Dashboard</h1>
 
   <div class="data">Heart Rate: <span id="hr">–</span> BPM</div>
-  <canvas id="hrChart" height="250"></canvas>
+  <canvas id="hrChart" height="120"></canvas>
 
-  <div class="data">SpO₂: <span id="spo2">–</span>%</div>
-  <canvas id="spo2Chart" height="250"></canvas>
+  <div class="data">SpO₂: <span id="spo2">–</span> %</div>
+  <canvas id="spo2Chart" height="120"></canvas>
 
   <div class="data">Current Label: <strong id="label">–</strong></div>
 
@@ -57,15 +31,15 @@
     <div class="flag">Finger: <span id="finger">–</span></div>
   </div>
 
-  <h2>30s Rolling Averages (per Label)</h2>
-  <canvas id="avgLabelChart" height="300"></canvas>
+  <h2>30 s Rolling Averages (per Label)</h2>
+  <canvas id="avgLabelChart" height="200"></canvas>
 
   <h2>Latest Averages Bar Chart</h2>
-  <canvas id="barLabelChart" height="300"></canvas>
+  <canvas id="barLabelChart" height="200"></canvas>
 
   <script>
     const FB_URL = 'https://espserver-db31d-default-rtdb.firebaseio.com/realtime.json';
-    const MAX_POINTS = 60;
+    const MAX_POINTS = 30;
 
     const times = [];
     const hrData = [];
@@ -77,13 +51,13 @@
     const hrChart = new Chart(document.getElementById('hrChart'), {
       type: 'line',
       data: { labels: times, datasets: [{ label: 'HR (BPM)', data: hrData, fill: true }] },
-      options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+      options: { responsive: true, scales: { y: { beginAtZero: true } } }
     });
 
     const spo2Chart = new Chart(document.getElementById('spo2Chart'), {
       type: 'line',
       data: { labels: times, datasets: [{ label: 'SpO₂ (%)', data: spo2Data, fill: true }] },
-      options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+      options: { responsive: true, scales: { y: { beginAtZero: true } } }
     });
 
     function initLabelCharts(labelKeys) {
@@ -97,7 +71,6 @@
         data: { labels: times, datasets: avgDatasets },
         options: {
           responsive: true,
-          maintainAspectRatio: false,
           scales: { y: { min: 0, max: 1 } }
         }
       });
@@ -112,7 +85,6 @@
         },
         options: {
           responsive: true,
-          maintainAspectRatio: false,
           scales: { y: { min: 0, max: 1 } }
         }
       });
@@ -128,6 +100,7 @@
         document.getElementById('finger').innerText = finger ? 'Yes' : 'No';
 
         if (!finger) {
+          // clear text values
           document.getElementById('hr').innerText    = '–';
           document.getElementById('spo2').innerText  = '–';
           document.getElementById('label').innerText = '–';
@@ -135,12 +108,18 @@
           document.getElementById('hazard').innerText= '–';
           document.getElementById('call').innerText  = '–';
 
+          // clear all arrays
           times.length = 0;
           hrData.length = 0;
           spo2Data.length = 0;
-          if (avgDatasets.length) avgDatasets.forEach(ds => ds.data.length = 0);
-          if (barData.length) barData.fill(0);
+          if (avgDatasets.length) {
+            avgDatasets.forEach(ds => ds.data.length = 0);
+          }
+          if (barData.length) {
+            barData.fill(0);
+          }
 
+          // update charts
           hrChart.update();
           spo2Chart.update();
           if (avgLabelChart) avgLabelChart.update();
@@ -150,6 +129,7 @@
           }
 
         } else {
+          // update text
           document.getElementById('hr').innerText    = d.hr.toFixed(0);
           document.getElementById('spo2').innerText  = d.spo2.toFixed(1);
           document.getElementById('label').innerText = d.label;
