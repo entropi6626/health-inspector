@@ -11,7 +11,6 @@
     canvas { max-width: 90%; margin: 1rem auto; display: block; }
     .flags { display: flex; justify-content: center; gap: 1rem; margin: 0.5rem 0;}
     .flag { padding: 0.5rem 1rem; border: 1px solid #666; border-radius: 4px; }
-    .off { color: red; font-weight: bold; }
   </style>
 </head>
 <body>
@@ -29,10 +28,7 @@
     <div class="flag">Fatal: <span id="fatal">–</span></div>
     <div class="flag">Hazardous: <span id="hazard">–</span></div>
     <div class="flag">Call Placed: <span id="call">–</span></div>
-    <div class="flag">Finger Detected: <span id="finger">–</span></div>
   </div>
-
-  <div class="data off" id="fingerOffMsg" style="display:none;">Finger Off – No Data</div>
 
   <h2>30 s Rolling Averages (per Label)</h2>
   <canvas id="avgLabelChart" height="200"></canvas>
@@ -44,19 +40,23 @@
     const FB_URL = 'https://espserver-db31d-default-rtdb.firebaseio.com/realtime.json';
     const MAX_POINTS = 30;
 
+    // time axis
     const times = [];
-    const hrData = [];
+
+    // HR & SpO₂ data
+    const hrData   = [];
     const spo2Data = [];
 
+    // charts
     let avgLabelChart, barLabelChart;
     let avgDatasets = [], barLabels = [], barData = [];
 
+    // create HR & SpO₂ charts
     const hrChart = new Chart(document.getElementById('hrChart'), {
       type: 'line',
       data: { labels: times, datasets: [{ label: 'HR (BPM)', data: hrData, fill: true }] },
       options: { responsive: true, scales: { y: { beginAtZero: true } } }
     });
-
     const spo2Chart = new Chart(document.getElementById('spo2Chart'), {
       type: 'line',
       data: { labels: times, datasets: [{ label: 'SpO₂ (%)', data: spo2Data, fill: true }] },
@@ -64,95 +64,75 @@
     });
 
     function initLabelCharts(labelKeys) {
+      // multi‑line for rolling averages
       avgDatasets = labelKeys.map(key => ({
         label: key,
         data: [],
         fill: false,
       }));
-
       avgLabelChart = new Chart(document.getElementById('avgLabelChart'), {
         type: 'line',
         data: { labels: times, datasets: avgDatasets },
-        options: { responsive: true, scales: { y: { min: 0, max: 1 } } }
+        options: {
+          responsive: true,
+          scales: { y: { min: 0, max: 1 } }
+        }
       });
 
+      // bar chart for latest
       barLabels = labelKeys;
-      barData = new Array(labelKeys.length).fill(0);
+      barData   = new Array(labelKeys.length).fill(0);
       barLabelChart = new Chart(document.getElementById('barLabelChart'), {
         type: 'bar',
         data: {
           labels: barLabels,
           datasets: [{ label: '30s Avg Probability', data: barData }]
         },
-        options: { responsive: true, scales: { y: { min: 0, max: 1 } } }
+        options: {
+          responsive: true,
+          scales: { y: { min: 0, max: 1 } }
+        }
       });
     }
 
     async function fetchAndRender() {
       try {
         const res = await fetch(FB_URL);
-        const d = await res.json();
+        const d   = await res.json();
         const now = new Date().toLocaleTimeString();
-        const finger = d.fingerDetected;
 
-        // Set flag text
-        document.getElementById('fatal').innerText  = d.fatalCondition ? 'YES' : 'NO';
-        document.getElementById('hazard').innerText = d.hazardousCondition ? 'YES' : 'NO';
-        document.getElementById('call').innerText   = d.callPlaced ? 'YES' : 'NO';
-        document.getElementById('finger').innerText = finger ? 'YES' : 'NO';
+        // update text
+        document.getElementById('hr').innerText    = d.hr.toFixed(0);
+        document.getElementById('spo2').innerText  = d.spo2.toFixed(1);
+        document.getElementById('label').innerText = d.label;
+        document.getElementById('fatal').innerText = d.fatalCondition;
+        document.getElementById('hazard').innerText= d.hazardousCondition;
+        document.getElementById('call').innerText  = d.callPlaced;
 
-        // Show/hide "Finger Off" message
-        document.getElementById('fingerOffMsg').style.display = finger ? 'none' : 'block';
-
-        if (!avgLabelChart && d.avgLabels) {
+        // init label charts once
+        if (!avgLabelChart) {
           initLabelCharts(Object.keys(d.avgLabels));
         }
 
-        // If finger is OFF
-        if (!finger) {
-          // Push 0s
-          if (times.length > MAX_POINTS) {
-            times.shift();
-            hrData.shift();
-            spo2Data.shift();
-            avgDatasets.forEach(ds => ds.data.shift());
-          }
-
-          times.push(now);
-          hrData.push(0);
-          spo2Data.push(0);
-          avgDatasets.forEach((ds, i) => {
-            ds.data.push(0);
-            barData[i] = 0;
-          });
-
-          document.getElementById('hr').innerText = '0';
-          document.getElementById('spo2').innerText = '0';
-          document.getElementById('label').innerText = '–';
-
-        } else {
-          // Normal update
-          if (times.length > MAX_POINTS) {
-            times.shift();
-            hrData.shift();
-            spo2Data.shift();
-            avgDatasets.forEach(ds => ds.data.shift());
-          }
-
-          times.push(now);
-          hrData.push(d.hr);
-          spo2Data.push(d.spo2);
-          document.getElementById('hr').innerText = d.hr.toFixed(0);
-          document.getElementById('spo2').innerText = d.spo2.toFixed(1);
-          document.getElementById('label').innerText = d.label;
-
-          avgDatasets.forEach((ds, i) => {
-            const val = d.avgLabels[ds.label] || 0;
-            ds.data.push(val);
-            barData[i] = val;
-          });
+        // shift old points
+        if (times.length > MAX_POINTS) {
+          times.shift();
+          hrData.shift();
+          spo2Data.shift();
+          avgDatasets.forEach(ds => ds.data.shift());
         }
 
+        // push new
+        times.push(now);
+        hrData.push(d.hr);
+        spo2Data.push(d.spo2);
+        avgDatasets.forEach((ds, i) => {
+          const v = d.avgLabels[ds.label] || 0;
+          ds.data.push(v);
+          barData[i] = v;
+        });
+
+        // update charts
         hrChart.update();
         spo2Chart.update();
         avgLabelChart.update();
